@@ -55,8 +55,13 @@ class SharedMemoryIPC(object):
         self.shmem_name = form_name(shmem_suffix)
         self.size = size
 
-        # Create share memory
-        self._mem = ipc.SharedMemory(self.shmem_name, ipc.O_CREAT, size=self.size)
+        # Create shared memory. OS X SysV IPC is stricter than Linux about
+        # this, so so follow the recommended segment creation procedure from
+        # the python-ipc docs.
+        try:
+            self._mem = ipc.SharedMemory(self.shmem_name, ipc.O_CREX, size=self.size)
+        except ipc.ExistentialError:
+            self._mem = ipc.SharedMemory(self.shmem_name, 0, size=0)
 
         # Map memory to mmap
         self._mmap = mmap(self._mem.fd, self.size)
