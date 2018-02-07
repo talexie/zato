@@ -48,7 +48,7 @@ import yaml
 # Zato
 from zato.common.auth_util import parse_basic_auth
 from zato.common.broker_message import code_to_name
-from zato.common.zato_keyutils import KeyUtils
+from zato.common.zato_keyutils import get_keyutils
 from zato.server.connection.jms_wmq.jms import WebSphereMQException, NoMessageAvailableException
 from zato.server.connection.jms_wmq.jms.connection import WebSphereMQConnection
 from zato.server.connection.jms_wmq.jms.core import TextMessage
@@ -209,7 +209,7 @@ class ConnectionContainer(object):
         self.lock = RLock()
         self.logger = None
         self.parent_pid = getppid()
-        self.keyutils = KeyUtils('zato-wmq', self.parent_pid)
+        self.keyutils = get_keyutils('zato-wmq', self.parent_pid)
 
         self.connections = {}
         self.outconns = {}

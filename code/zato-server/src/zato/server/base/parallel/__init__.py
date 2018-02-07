@@ -40,7 +40,7 @@ from zato.bunch import Bunch
 from zato.common import DATA_FORMAT, KVDB, SERVER_UP_STATUS, ZATO_ODB_POOL_NAME
 from zato.common.broker_message import HOT_DEPLOY, MESSAGE_TYPE, TOPICS
 from zato.common.ipc.api import IPCAPI
-from zato.common.zato_keyutils import KeyUtils
+from zato.common.zato_keyutils import get_keyutils
 from zato.common.posix_ipc_util import ServerStartupIPC
 from zato.common.pubsub import SkipDelivery
 from zato.common.time_util import TimeUtil
@@ -135,7 +135,7 @@ class ParallelServer(DisposableObject, BrokerMessageReceiver, ConfigLoader, HTTP
         self.is_first_worker = None
         self.shmem_size = -1.0
         self.server_startup_ipc = ServerStartupIPC()
-        self.keyutils = KeyUtils()
+        self.keyutils = get_keyutils()
 
         # Allows users store arbitrary data across service invocations
         self.user_ctx = Bunch()
