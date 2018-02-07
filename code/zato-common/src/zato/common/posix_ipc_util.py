@@ -9,6 +9,8 @@ Licensed under LGPLv3, see LICENSE.txt for terms and conditions.
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 # stdlib
+import hashlib
+import sys
 from datetime import datetime, timedelta
 from json import dumps, loads
 from logging import getLogger
@@ -26,6 +28,16 @@ logger = getLogger(__name__)
 
 _shmem_pattern = '/zato-shmem-{}'
 
+def form_name(suffix):
+    """Darwin's SysV IPC implementation is older than time itself. Unlike
+    Linux, its name field is limited to 31 bytes. Therefore on Darwin, use a
+    truncated hash of the suffix to avoid OSError."""
+    if sys.platform == 'darwin':
+        avail = 31 + 2 - len(_shmem_pattern)
+        suffix = hashlib.md5(suffix).hexdigest()[avail:]
+
+    return _shmem_pattern.format(suffix)
+
 # ################################################################################################################################
 
 class SharedMemoryIPC(object):
@@ -40,7 +52,7 @@ class SharedMemoryIPC(object):
     def create(self, shmem_suffix, size):
         """ Creates all IPC structures.
         """
-        self.shmem_name = _shmem_pattern.format(shmem_suffix)
+        self.shmem_name = form_name(shmem_suffix)
         self.size = size
 
         # Create share memory
