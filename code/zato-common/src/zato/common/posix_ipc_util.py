@@ -72,8 +72,10 @@ class SharedMemoryIPC(object):
     def store(self, data):
         """ Serializes input data as JSON and stores it in RAM, overwriting any previous data.
         """
-        self._mmap.seek(0)
-        self._mmap.write(dumps(data))
+        dumped = dumps(data)
+        # Ensure trailing garbage is removed when data shrinks.
+        self._mmap[:] = b'\x00' * len(self._mmap)
+        self._mmap[:len(dumped)] = dumped
         self._mmap.flush()
 
     def store_initial(self):
@@ -87,8 +89,7 @@ class SharedMemoryIPC(object):
     def load(self, needs_loads=True):
         """ Reads in all data from RAM and, optionally, loads it as JSON.
         """
-        self._mmap.seek(0)
-        data = self._mmap.read(self.size).strip('\x00')
+        data = self._mmap[:].strip(b'\x00')
         return loads(data) if needs_loads else data
 
     def close(self):
