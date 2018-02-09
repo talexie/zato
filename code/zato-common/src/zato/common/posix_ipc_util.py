@@ -56,8 +56,8 @@ class SharedMemoryIPC(object):
         self.size = size
 
         # Create shared memory. OS X SysV IPC is stricter than Linux about
-        # this, so so follow the recommended segment creation procedure from
-        # the python-ipc docs.
+        # this, so follow the recommended segment creation procedure from the
+        # python-ipc doc.
         try:
             self._mem = ipc.SharedMemory(self.shmem_name, ipc.O_CREX, size=self.size)
         except ipc.ExistentialError:
