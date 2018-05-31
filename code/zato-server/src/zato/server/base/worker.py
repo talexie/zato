@@ -164,8 +164,8 @@ class WorkerStore(BrokerMessageReceiver):
         # RBAC
         self.init_rbac()
 
-	# API keys
-	self.update_apikeys()
+        # API keys
+        self.update_apikeys()
 
         # Request dispatcher - matches URLs, checks security and dispatches HTTP
         # requests to services.
@@ -250,7 +250,7 @@ class WorkerStore(BrokerMessageReceiver):
                     self.server.tls_dir, get_tls_from_payload(tls.config.value, True))
 
         wrapper_config = {'id':config.id,
-            'is_active':config.is_active, 'method':config.method,
+                          'is_active':config.is_active, 'method':config.method,
             'data_format':config.get('data_format'),
             'name':config.name, 'transport':config.transport,
             'address_host':config.host,
@@ -357,7 +357,7 @@ class WorkerStore(BrokerMessageReceiver):
         config_dict = {
             NOTIF.TYPE.OPENSTACK_SWIFT: self.worker_config.notif_cloud_openstack_swift,
             NOTIF.TYPE.SQL: self.worker_config.notif_sql,
-        }[notif_type]
+            }[notif_type]
 
         return config_dict.get(name)
 
@@ -381,7 +381,7 @@ class WorkerStore(BrokerMessageReceiver):
                 'service': 'zato.notif.invoke-run-notifier',
                 'payload': {'config': msg},
                 'cid': new_cid(),
-            }, CHANNEL.NOTIFIER_RUN, action)
+                }, CHANNEL.NOTIFIER_RUN, action)
 
 # ################################################################################################################################
 
@@ -607,19 +607,19 @@ class WorkerStore(BrokerMessageReceiver):
         """ Updates an existing API key security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.APIKEY,
-                self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
+                          self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
 
     def on_broker_msg_SECURITY_APIKEY_DELETE(self, msg, *args):
         """ Deletes an API key security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.APIKEY,
-                self._visit_wrapper_delete)
+                          self._visit_wrapper_delete)
 
     def on_broker_msg_SECURITY_APIKEY_CHANGE_PASSWORD(self, msg, *args):
         """ Changes password of an API key security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.APIKEY,
-                self._visit_wrapper_change_password)
+                          self._visit_wrapper_change_password)
 
 # ################################################################################################################################
 
@@ -638,19 +638,19 @@ class WorkerStore(BrokerMessageReceiver):
         """ Updates an existing AWS security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.AWS,
-                self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
+                          self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
 
     def on_broker_msg_SECURITY_AWS_DELETE(self, msg, *args):
         """ Deletes an AWS security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.AWS,
-                self._visit_wrapper_delete)
+                          self._visit_wrapper_delete)
 
     def on_broker_msg_SECURITY_AWS_CHANGE_PASSWORD(self, msg, *args):
         """ Changes password of an AWS security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.AWS,
-                self._visit_wrapper_change_password)
+                          self._visit_wrapper_change_password)
 
 # ################################################################################################################################
 
@@ -669,19 +669,19 @@ class WorkerStore(BrokerMessageReceiver):
         """ Updates an existing OpenStack security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.OPENSTACK,
-                self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
+                          self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
 
     def on_broker_msg_SECURITY_OPENSTACK_DELETE(self, msg, *args):
         """ Deletes an OpenStack security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.OPENSTACK,
-                self._visit_wrapper_delete)
+                          self._visit_wrapper_delete)
 
     def on_broker_msg_SECURITY_OPENSTACK_CHANGE_PASSWORD(self, msg, *args):
         """ Changes password of an OpenStack security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.OPENSTACK,
-                self._visit_wrapper_change_password)
+                          self._visit_wrapper_change_password)
 
 # ################################################################################################################################
 
@@ -700,19 +700,19 @@ class WorkerStore(BrokerMessageReceiver):
         """ Updates an existing NTLM security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.NTLM,
-                self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
+                          self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
 
     def on_broker_msg_SECURITY_NTLM_DELETE(self, msg, *args):
         """ Deletes an NTLM security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.NTLM,
-                self._visit_wrapper_delete)
+                          self._visit_wrapper_delete)
 
     def on_broker_msg_SECURITY_NTLM_CHANGE_PASSWORD(self, msg, *args):
         """ Changes password of an NTLM security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.NTLM,
-                self._visit_wrapper_change_password)
+                          self._visit_wrapper_change_password)
 
 # ################################################################################################################################
 
@@ -731,19 +731,19 @@ class WorkerStore(BrokerMessageReceiver):
         """ Updates an existing HTTP Basic Auth security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.BASIC_AUTH,
-                self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
+                          self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
 
     def on_broker_msg_SECURITY_BASIC_AUTH_DELETE(self, msg, *args):
         """ Deletes an HTTP Basic Auth security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.BASIC_AUTH,
-                self._visit_wrapper_delete)
+                          self._visit_wrapper_delete)
 
     def on_broker_msg_SECURITY_BASIC_AUTH_CHANGE_PASSWORD(self, msg, *args):
         """ Changes password of an HTTP Basic Auth security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.BASIC_AUTH,
-                self._visit_wrapper_change_password)
+                          self._visit_wrapper_change_password)
 
 # ################################################################################################################################
 
@@ -762,19 +762,19 @@ class WorkerStore(BrokerMessageReceiver):
         """ Updates an existing OAuth security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.OAUTH,
-                self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
+                          self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
 
     def on_broker_msg_SECURITY_OAUTH_DELETE(self, msg, *args):
         """ Deletes an OAuth security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.OAUTH,
-                self._visit_wrapper_delete)
+                          self._visit_wrapper_delete)
 
     def on_broker_msg_SECURITY_OAUTH_CHANGE_PASSWORD(self, msg, *args):
         """ Changes password of an OAuth security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.OAUTH,
-                self._visit_wrapper_change_password)
+                          self._visit_wrapper_change_password)
 
 # ################################################################################################################################
 
@@ -840,7 +840,7 @@ class WorkerStore(BrokerMessageReceiver):
         list(parse_tls_channel_security_definition(msg.value))
 
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.TLS_CHANNEL_SEC,
-                self._visit_wrapper_edit, keys=('name', 'value'))
+                          self._visit_wrapper_edit, keys=('name', 'value'))
 
     def on_broker_msg_SECURITY_TLS_CHANNEL_SEC_DELETE(self, msg, *args):
         """ Deletes a security definition basing on TLS client certificates.
@@ -903,21 +903,21 @@ class WorkerStore(BrokerMessageReceiver):
         """ Updates an existing WS-Security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.WSS,
-                self._visit_wrapper_edit, keys=('is_active', 'username', 'name',
-                    'nonce_freshness_time', 'reject_expiry_limit', 'password_type',
+                          self._visit_wrapper_edit, keys=('is_active', 'username', 'name',
+                                                'nonce_freshness_time', 'reject_expiry_limit', 'password_type',
                     'reject_empty_nonce_creat', 'reject_stale_tokens'))
 
     def on_broker_msg_SECURITY_WSS_DELETE(self, msg, *args):
         """ Deletes a WS-Security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.WSS,
-                self._visit_wrapper_delete)
+                          self._visit_wrapper_delete)
 
     def on_broker_msg_SECURITY_WSS_CHANGE_PASSWORD(self, msg, *args):
         """ Changes the password of a WS-Security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.WSS,
-                self._visit_wrapper_change_password)
+                          self._visit_wrapper_change_password)
 
 # ################################################################################################################################
 
@@ -935,19 +935,19 @@ class WorkerStore(BrokerMessageReceiver):
         """ Updates an existing XPath security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.XPATH_SEC,
-                self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
+                          self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
 
     def on_broker_msg_SECURITY_XPATH_SEC_DELETE(self, msg, *args):
         """ Deletes an XPath security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.XPATH_SEC,
-                self._visit_wrapper_delete)
+                          self._visit_wrapper_delete)
 
     def on_broker_msg_SECURITY_XPATH_SEC_CHANGE_PASSWORD(self, msg, *args):
         """ Changes password of an XPath security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.XPATH_SEC,
-                self._visit_wrapper_change_password)
+                          self._visit_wrapper_change_password)
 
 # ################################################################################################################################
 
@@ -1012,7 +1012,7 @@ class WorkerStore(BrokerMessageReceiver):
 
         service = self.server.service_store.new_instance_by_name(msg['service'])
         service.update_handle(self._set_service_response_data, service, payload,
-            channel, data_format, transport, self.server, self.broker_client, self, cid,
+                              channel, data_format, transport, self.server, self.broker_client, self, cid,
             self.worker_config.simple_io, job_type=msg.get('job_type'), wsgi_environ=wsgi_environ,
             environ=msg.get('environ'))
 
@@ -1110,7 +1110,7 @@ class WorkerStore(BrokerMessageReceiver):
 
     def _delete_config_close_wrapper_http_soap(self, name, transport, log_func):
         """ Deletes/closes an HTTP/SOAP outconn.
-        """ 
+        """
         # Are we dealing with plain HTTP or SOAP?
         config_dict = getattr(self.worker_config, 'out_' + transport)
 
@@ -1448,7 +1448,7 @@ class WorkerStore(BrokerMessageReceiver):
 
     def on_broker_msg_NOTIF_CLOUD_OPENSTACK_SWIFT_CREATE_EDIT(self, msg):
         self.create_edit_notifier(msg, 'NOTIF_CLOUD_OPENSTACK_SWIFT_CREATE_EDIT',
-            self.server.worker_store.worker_config.notif_cloud_openstack_swift, 
+                                  self.server.worker_store.worker_config.notif_cloud_openstack_swift,
             self._update_cloud_openstack_swift_container)
 
     def on_broker_msg_NOTIF_CLOUD_OPENSTACK_SWIFT_DELETE(self, msg):
