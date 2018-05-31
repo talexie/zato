@@ -1145,3 +1145,8 @@ def invoke_startup_services(
             broker_client.invoke_async(msg)
         else:
             worker_store.on_message_invoke_service(msg, msg['channel'], msg['action'])
+
+# ################################################################################################################################
+
+def update_apikey_username(config):
+    config.username = 'HTTP_{}'.format(config.get('username', '').upper().replace('-', '_'))

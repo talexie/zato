@@ -89,8 +89,9 @@ class Create(_CreateEdit):
                 self.logger.error(msg)
                 session.rollback()
 
-                raise 
+                raise
             else:
+                input.id = auth.id
                 input.action = SECURITY.XPATH_SEC_CREATE.value
                 input.sec_type = SEC_DEF_TYPE.XPATH_SEC
                 self.broker_client.publish(input)
@@ -120,7 +121,7 @@ class Edit(_CreateEdit):
 
                 if existing_one:
                     raise Exception('XPath security definition [{0}] already exists on this cluster'.format(input.name))
-                
+
                 auth = session.query(XPathSecurity).filter_by(id=input.id).one()
                 old_name = auth.name
 
@@ -138,7 +139,7 @@ class Edit(_CreateEdit):
                 self.logger.error(msg)
                 session.rollback()
 
-                raise 
+                raise
             else:
                 input.action = SECURITY.XPATH_SEC_EDIT.value
                 input.old_name = old_name
@@ -160,7 +161,7 @@ class ChangePassword(ChangePasswordBase):
     def handle(self):
         def _auth(instance, password):
             instance.password = password
-            
+
         return self._handle(XPathSecurity, _auth, SECURITY.XPATH_SEC_CHANGE_PASSWORD.value)
 
 class Delete(AdminService):
