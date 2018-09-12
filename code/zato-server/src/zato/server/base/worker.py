@@ -610,7 +610,7 @@ class WorkerStore(BrokerMessageReceiver):
         """ Updates an existing API key security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.APIKEY,
-                          self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
+                          self._visit_wrapper_edit, keys=('username', 'name'))
 
     def on_broker_msg_SECURITY_APIKEY_DELETE(self, msg, *args):
         """ Deletes an API key security definition.
@@ -641,7 +641,7 @@ class WorkerStore(BrokerMessageReceiver):
         """ Updates an existing AWS security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.AWS,
-                          self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
+                          self._visit_wrapper_edit, keys=('username', 'name'))
 
     def on_broker_msg_SECURITY_AWS_DELETE(self, msg, *args):
         """ Deletes an AWS security definition.
@@ -672,7 +672,7 @@ class WorkerStore(BrokerMessageReceiver):
         """ Updates an existing OpenStack security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.OPENSTACK,
-                          self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
+                          self._visit_wrapper_edit, keys=('username', 'name'))
 
     def on_broker_msg_SECURITY_OPENSTACK_DELETE(self, msg, *args):
         """ Deletes an OpenStack security definition.
@@ -703,7 +703,7 @@ class WorkerStore(BrokerMessageReceiver):
         """ Updates an existing NTLM security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.NTLM,
-                          self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
+                          self._visit_wrapper_edit, keys=('username', 'name'))
 
     def on_broker_msg_SECURITY_NTLM_DELETE(self, msg, *args):
         """ Deletes an NTLM security definition.
@@ -734,7 +734,7 @@ class WorkerStore(BrokerMessageReceiver):
         """ Updates an existing HTTP Basic Auth security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.BASIC_AUTH,
-                          self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
+                          self._visit_wrapper_edit, keys=('username', 'name'))
 
     def on_broker_msg_SECURITY_BASIC_AUTH_DELETE(self, msg, *args):
         """ Deletes an HTTP Basic Auth security definition.
@@ -765,7 +765,7 @@ class WorkerStore(BrokerMessageReceiver):
         """ Updates an existing OAuth security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.OAUTH,
-                          self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
+                          self._visit_wrapper_edit, keys=('username', 'name'))
 
     def on_broker_msg_SECURITY_OAUTH_DELETE(self, msg, *args):
         """ Deletes an OAuth security definition.
@@ -906,9 +906,9 @@ class WorkerStore(BrokerMessageReceiver):
         """ Updates an existing WS-Security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.WSS,
-                          self._visit_wrapper_edit, keys=('is_active', 'username', 'name',
-                                                'nonce_freshness_time', 'reject_expiry_limit', 'password_type',
-                    'reject_empty_nonce_creat', 'reject_stale_tokens'))
+            self._visit_wrapper_edit, keys=('username', 'name',
+            'nonce_freshness_time', 'reject_expiry_limit', 'password_type',
+            'reject_empty_nonce_creat', 'reject_stale_tokens'))
 
     def on_broker_msg_SECURITY_WSS_DELETE(self, msg, *args):
         """ Deletes a WS-Security definition.
@@ -938,7 +938,7 @@ class WorkerStore(BrokerMessageReceiver):
         """ Updates an existing XPath security definition.
         """
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.XPATH_SEC,
-                          self._visit_wrapper_edit, keys=('is_active', 'username', 'name'))
+                          self._visit_wrapper_edit, keys=('username', 'name'))
 
     def on_broker_msg_SECURITY_XPATH_SEC_DELETE(self, msg, *args):
         """ Deletes an XPath security definition.
