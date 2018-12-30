@@ -97,11 +97,9 @@ class Consumer(object):
         # type: (dict, Callable)
         self.config = config
         self.name = self.config.name
-        self.queue = [Queue(self.config.queue)]
 
-        if self.config.max_priority:
-            for each in self.queue:
-                self.queue[each].max_priority = self.config.max_priority
+        max_priority = self.config.max_priority or None
+        self.queue = [Queue(self.config.queue, max_priority=max_priority)]
 
         self.on_amqp_message = on_amqp_message
         self.keep_running = True
