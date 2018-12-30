@@ -98,10 +98,11 @@ class Consumer(object):
         self.config = config
         self.name = self.config.name
         self.queue = [Queue(self.config.queue)]
-        #Add max priority to each queue
-        if self.config.queue_priority:
+
+        if self.config.max_priority:
             for each in self.queue:
-                self.queue[each].max_priority = self.config.queue_priority
+                self.queue[each].max_priority = self.config.max_priority
+
         self.on_amqp_message = on_amqp_message
         self.keep_running = True
         self.is_stopped = False

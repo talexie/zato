@@ -475,8 +475,10 @@ def _channel_amqp(session, cluster_id):
         ChannelAMQP.id, ChannelAMQP.name, ChannelAMQP.is_active,
         ChannelAMQP.queue, ChannelAMQP.consumer_tag_prefix,
         ConnDefAMQP.name.label('def_name'), ChannelAMQP.def_id,
-        ChannelAMQP.pool_size, ChannelAMQP.ack_mode, ChannelAMQP.prefetch_count,ChannelAMQP.queue_priority,
+        ChannelAMQP.pool_size, ChannelAMQP.ack_mode,
+        ChannelAMQP.prefetch_count,
         ChannelAMQP.data_format,
+        ChannelAMQP.opaque1,
         Service.name.label('service_name'),
         Service.impl_name.label('service_impl_name')).\
         filter(ChannelAMQP.def_id==ConnDefAMQP.id).\

@@ -33,7 +33,7 @@
             'pool_size',
             'ack_mode',
             'prefetch_count',
-            'queue_priority',		
+            'max_priority',
             'service',
             '_edit',
             '_delete',
@@ -63,7 +63,7 @@
         <div class='page_prompt' style="clear:left">
             <a href="javascript:$.fn.zato.channel.amqp.create()">Create a new AMQP channel</a>
         </div>
-        
+
 
         <div id="markup">
             <table id="data-table">
@@ -79,7 +79,7 @@
                         <th><a href="#">Pool size</a></th>
                         <th><a href="#">Ack mode</a></th>
                         <th><a href="#">Prefetch count</a></th>
-			<th><a href="#">Queue Priority</a></th>
+                         <th><a href="#">Max. priority</a></th>
                         <th><a href="#">Service</a></th>
                         <th>&nbsp;</th>
                         <th>&nbsp;</th>
@@ -102,7 +102,7 @@
                         <td>{{ item.pool_size }}</td>
                         <td>{{ item.ack_mode }}</td>
                         <td>{{ item.prefetch_count }}</td>
-			<td>{{ item.queue_priority}}</td>
+                        <td>{{ item.max_priority}}</td>
                         <td><a href="{% url "service-overview" item.service_name %}?cluster={{ cluster_id }}">{{ item.service_name }}</a></td>
                         <td><a href="javascript:$.fn.zato.channel.amqp.edit('{{ item.id }}')">Edit</a></td>
                         <td><a href="javascript:$.fn.zato.channel.amqp.delete_('{{ item.id }}')">Delete</a></td>
@@ -162,10 +162,10 @@
                             <td style="vertical-align:middle">Prefetch count</td>
                             <td>{{ create_form.prefetch_count }}</td>
                         </tr>
-                        
-			<tr>
-                            <td style="vertical-align:middle">Queue Priority</td>
-                            <td>{{ create_form.queue_priority }}</td>
+
+                        <tr>
+                            <td style="vertical-align:middle">Max. priority</td>
+                            <td>{{ create_form.max_priority }}</td>
                         </tr>
 
                         <tr>
@@ -188,13 +188,13 @@
                                 <input type="submit" value="OK" />
                                 <button type='button' onclick='javascript:$.fn.zato.data_table.close(this)'>Cancel</button>
                             </td>
-                        </tr>                        
+                        </tr>
                     </table>
                     <input type="hidden" id="cluster_id" name="cluster_id" value="{{ cluster_id }}" />
                 </form>
             </div>
         </div>
-        
+
         <div id="edit-div" class='data-popup ignore'>
             <div class="bd">
                 <form action="{% url "channel-amqp-edit" %}" method="post" id="edit-form">
@@ -234,9 +234,9 @@
                             <td>{{ edit_form.prefetch_count }}</td>
                         </tr>
 
-			<tr>
-                            <td style="vertical-align:middle">Queue Priority</td>
-                            <td>{{ edit_form.queue_priority }}</td>
+                        <tr>
+                            <td style="vertical-align:middle">Max. priority</td>
+                            <td>{{ edit_form.max_priority }}</td>
                         </tr>
 
                         <tr>
@@ -259,7 +259,7 @@
                                 <input type="submit" value="OK" />
                                 <button type='button' onclick='javascript:$.fn.zato.data_table.close(this)'>Cancel</button>
                             </td>
-                        </tr>                        
+                        </tr>
                     </table>
                     <input type="hidden" id="id_edit-cluster_id" name="cluster_id" value="{{ cluster_id }}" />
                     <input type="hidden" id="id_edit-id" name="id" />

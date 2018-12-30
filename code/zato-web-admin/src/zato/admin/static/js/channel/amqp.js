@@ -52,7 +52,7 @@ $.fn.zato.channel.amqp.data_table.new_row = function(item, data, include_tr) {
     row += String.format('<td>{0}</td>', item.pool_size);
     row += String.format('<td>{0}</td>', item.ack_mode);
     row += String.format('<td>{0}</td>', item.prefetch_count);
-    row += String.format('<td>{0}</td>', item.queue_priority);	
+    row += String.format('<td>{0}</td>', item.max_priority);
     row += String.format('<td>{0}</td>', $.fn.zato.data_table.service_text(item.service, cluster_id));
     row += String.format('<td>{0}</td>', String.format("<a href=\"javascript:$.fn.zato.channel.amqp.edit('{0}')\">Edit</a>", item.id));
     row += String.format('<td>{0}</td>', String.format("<a href='javascript:$.fn.zato.channel.amqp.delete_({0});'>Delete</a>", item.id));

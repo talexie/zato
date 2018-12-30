@@ -16,6 +16,8 @@ from traceback import format_exc
 from zato.common.broker_message import CHANNEL
 from zato.common.odb.model import ChannelAMQP, Cluster, ConnDefAMQP, Service
 from zato.common.odb.query import channel_amqp_list
+from zato.common.util.sql import set_instance_opaque_attrs, elems_with_opaque
+from zato.server.service import Int
 from zato.server.service.internal import AdminService, AdminSIO, GetListAdminSIO
 
 # ################################################################################################################################
@@ -31,11 +33,11 @@ class GetList(AdminService):
         response_elem = 'zato_channel_amqp_get_list_response'
         input_required = ('cluster_id',)
         output_required = ('id', 'name', 'is_active', 'queue', 'consumer_tag_prefix', 'def_name', 'def_id', 'service_name',
-            'pool_size', 'ack_mode','prefetch_count','queue_priority')
+            'pool_size', 'ack_mode', Int('prefetch_count'), 'max_priority')
         output_optional = ('data_format',)
 
     def get_data(self, session):
-        return self._search(channel_amqp_list, session, self.request.input.cluster_id, False)
+        return elems_with_opaque(self._search(channel_amqp_list, session, self.request.input.cluster_id, False))
 
     def handle(self):
         with closing(self.odb.session()) as session:
@@ -52,7 +54,7 @@ class Create(AdminService):
         request_elem = 'zato_channel_amqp_create_request'
         response_elem = 'zato_channel_amqp_create_response'
         input_required = ('cluster_id', 'name', 'is_active', 'def_id', 'queue', 'consumer_tag_prefix', 'service', 'pool_size',
-            'ack_mode','prefetch_count','queue_priority')
+            'ack_mode', Int('prefetch_count'), Int('max_priority'))
         input_optional = ('data_format',)
         output_required = ('id', 'name')
 
@@ -60,8 +62,7 @@ class Create(AdminService):
         with closing(self.odb.session()) as session:
             input = self.request.input
 
-            # Let's see if we already have a channel of that name before committing
-            # any stuff into the database.
+            # Let's see if we already have a channel of that name before committing anything into the database.
             existing_one = session.query(ChannelAMQP.id).\
                 filter(ConnDefAMQP.cluster_id==input.cluster_id).\
                 filter(ChannelAMQP.def_id==ConnDefAMQP.id).\
@@ -93,8 +94,10 @@ class Create(AdminService):
                 item.pool_size = input.pool_size
                 item.ack_mode = input.ack_mode
                 item.prefetch_count = input.prefetch_count
-                item.queue_priority = input.queue_priority
                 item.data_format = input.data_format
+
+                # Opaque attributes
+                set_instance_opaque_attrs(item, input, only=['max_priority'])
 
                 session.add(item)
                 session.commit()
@@ -108,8 +111,8 @@ class Create(AdminService):
                 self.response.payload.id = item.id
                 self.response.payload.name = item.name
 
-            except Exception, e:
-                self.logger.error('Could not create an AMQP channel, e:`%s`', format_exc(e))
+            except Exception:
+                self.logger.error('AMQP channel could not be created, e:`%s`', format_exc())
                 session.rollback()
 
                 raise
@@ -125,7 +128,7 @@ class Edit(AdminService):
         request_elem = 'zato_channel_amqp_edit_request'
         response_elem = 'zato_channel_amqp_edit_response'
         input_required = ('id', 'cluster_id', 'name', 'is_active', 'def_id', 'queue', 'consumer_tag_prefix', 'service',
-            'pool_size', 'ack_mode','prefetch_count','queue_priority')
+            'pool_size', 'ack_mode', Int('prefetch_count'), Int('max_priority'))
         input_optional = ('data_format',)
         output_required = ('id', 'name')
 
@@ -133,8 +136,8 @@ class Edit(AdminService):
         input = self.request.input
 
         with closing(self.odb.session()) as session:
-            # Let's see if we already have an account of that name before committing
-            # any stuff into the database.
+
+            # Let's see if we already have a channel of that name before committing anything into the database.
             existing_one = session.query(ChannelAMQP.id).\
                 filter(ConnDefAMQP.cluster_id==input.cluster_id).\
                 filter(ChannelAMQP.def_id==ConnDefAMQP.id).\
@@ -168,7 +171,6 @@ class Edit(AdminService):
                 item.pool_size = input.pool_size
                 item.ack_mode = input.ack_mode
                 item.prefetch_count = input.prefetch_count
-                item.queue_priority = input.queue_priority
                 item.data_format = input.data_format
 
                 session.add(item)
@@ -184,8 +186,8 @@ class Edit(AdminService):
                 self.response.payload.id = item.id
                 self.response.payload.name = item.name
 
-            except Exception, e:
-                self.logger.error('Could not update the AMQP definition, e:`%s`', format_exc(e))
+            except Exception:
+                self.logger.error('AMQP channel could not be updated, e:`%s`', format_exc())
                 session.rollback()
 
                 raise
@@ -222,9 +224,9 @@ class Delete(AdminService):
                     'def_name':def_name,
                 })
 
-            except Exception, e:
+            except Exception:
                 session.rollback()
-                self.logger.error('Could not delete the AMQP channel, e:`%s`', format_exc(e))
+                self.logger.error('AMQP channel could not be deleted, e:`%s`', format_exc())
 
                 raise
 

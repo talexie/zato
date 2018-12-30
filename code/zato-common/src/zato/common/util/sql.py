@@ -183,8 +183,7 @@ def elems_with_opaque(elems):
 # ################################################################################################################################
 
 def set_instance_opaque_attrs(instance, input, skip=None, only=None, _zato_skip=_zato_opaque_skip_attrs):
-    """ Given an SQLAlchemy object instance and incoming SimpleIO-based input,
-    populates all opaque values of that instance.
+    """ Given an SQLAlchemy object instance and incoming SimpleIO-based input, populates all opaque values of that instance.
     """
     only = only or []
     instance_opaque_attrs = None
