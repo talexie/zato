@@ -28,7 +28,7 @@ from zato.server.connection.amqp import BaseAMQPConnector
 from zato.server.connection import setup_logging, start_connector as _start_connector
 
 ENV_ITEM_NAME = 'ZATO_CONNECTOR_AMQP_OUT_ID'
-CONN_TEMPLATE = 'amqp://{username}:{password}@{host}:{port}/{vhost}'
+CONN_TEMPLATE = 'amqps://{username}:{password}@{host}:{port}/{vhost}'
 COMPONENT_PREFIX = 'out-amqp'
 logger = logging.getLogger('zato_connector')
 
@@ -51,7 +51,7 @@ class _Transport(Transport):
                                login_method=conninfo.login_method,
                                virtual_host=conninfo.virtual_host,
                                insist=conninfo.insist,
-                               ssl=conninfo.ssl,
+                               ssl=True,
                                connect_timeout=conninfo.connect_timeout,
                                heartbeat=conninfo.heartbeat,
                                client_properties={'zato-component':get_component_name(COMPONENT_PREFIX)})
