@@ -823,7 +823,7 @@ class CacheAPI(object):
             CACHE.TYPE.MEMCACHED:{},
         }
 
-        self.builtin = self.caches[CACHE.TYPE.BUILTIN]
+        self.builtin = self.caches[CACHE.TYPE.BUILTIN] # type: Cache
         self.memcached = self.caches[CACHE.TYPE.MEMCACHED]
 
     def _maybe_set_default(self, config, cache):
@@ -1128,3 +1128,60 @@ class CacheAPI(object):
         self.caches[cache_type][data.cache_name].sync_after_clear()
 
 # ################################################################################################################################
+
+'''
+# -*- coding: utf-8 -*-
+
+from __future__ import absolute_import, division, print_function, unicode_literals
+
+# Zato
+from zato.server.service import Service
+
+# ################################################################################################################################
+
+# Type checking
+if 0:
+    from zato.server.connection.cache import Cache
+
+# ################################################################################################################################
+
+class ProxyItem(object):
+    """ An individual proxy object representing one ore more cache items, as requested to be returned by ProxyAPI methods.
+    """
+    def __init__(self, cache, func_name, *args, **kwargs):
+        # type: (Cache, str)
+        self.cache = cache
+        self.func_name = func_name
+        self.args = args
+        self.kwargs = kwargs
+
+# ################################################################################################################################
+
+class ProxyAPI(object):
+    """ API to access cache items through proxy objects.
+    """
+    def __init__(self, cache):
+        # type: (Cache)
+        self.cache = cache
+
+    def get(self, *args, **kwargs):
+        # type: (str) -> ProxyItem
+        return ProxyItem(self.cache,
+
+    get_by_prefix = get_by_suffix = get_by_regex = get_contains = get_not_contains = \
+        get_contains_all = get_contains_any = get
+
+# ################################################################################################################################
+
+class MyService(Service):
+    def handle(self):
+
+        cache = self.cache.default
+        cache.proxy = ProxyAPI()
+
+        api = cache.proxy # type: ProxyAPI
+
+        proxy = api.get
+
+# ################################################################################################################################
+'''
