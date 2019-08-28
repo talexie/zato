@@ -1134,6 +1134,9 @@ class CacheAPI(object):
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+# stdlib
+from logging import getLogger
+
 # Zato
 from zato.server.service import Service
 
@@ -1142,6 +1145,10 @@ from zato.server.service import Service
 # Type checking
 if 0:
     from zato.server.connection.cache import Cache
+
+# ################################################################################################################################
+
+logger = getLogger('zato')
 
 # ################################################################################################################################
 
@@ -1154,6 +1161,26 @@ class ProxyItem(object):
         self.func_name = func_name
         self.args = args
         self.kwargs = kwargs
+        self._func = None
+
+    def key(self):
+        return self.args[0]
+
+    def value(self):
+        if not self._func:
+            self._func = getattr(self.cache, self.func_name)
+            logger.warn('FFF %s', self._func)
+
+        return self._func(*self.args, **self.kwargs)
+
+# ################################################################################################################################
+
+class ProxyInvoker(object):
+    """ Lets one invoke arbitrary methods on values stored in Zato caches.
+    """
+    def __init__(self, cache):
+        # type: (Cache)
+        self.cache = cache
 
 # ################################################################################################################################
 
@@ -1164,12 +1191,13 @@ class ProxyAPI(object):
         # type: (Cache)
         self.cache = cache
 
-    def get(self, *args, **kwargs):
-        # type: (str) -> ProxyItem
-        return ProxyItem(self.cache,
+    def _get(self, func_name, *args, **kwargs):
+        # type: (str, ...) -> ProxyItem
+        return ProxyItem(self.cache, func_name, *args, **kwargs)
 
-    get_by_prefix = get_by_suffix = get_by_regex = get_contains = get_not_contains = \
-        get_contains_all = get_contains_any = get
+    def get(self, *args, **kwargs):
+        # type: (...) -> ProxyItem
+        return self._get('get', *args, **kwargs)
 
 # ################################################################################################################################
 
@@ -1177,11 +1205,16 @@ class MyService(Service):
     def handle(self):
 
         cache = self.cache.default
-        cache.proxy = ProxyAPI()
+        cache.proxy = ProxyAPI(cache)
+
+        cache.set('mykey', 123)
 
         api = cache.proxy # type: ProxyAPI
 
-        proxy = api.get
+        proxy = api.get('mykey')
+
+        self.logger.warn('RRR %s', proxy.key())
+        self.logger.warn('EEE %s', proxy.value())
 
 # ################################################################################################################################
 '''
