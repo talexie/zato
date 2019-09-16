@@ -63,9 +63,10 @@ class OpenAPIGenerator(object):
 
             if output_required or output_optional:
                 for sio_elem in chain(output_required, output_optional):
-                    properties[sio_elem.name] = {}
-                    properties[sio_elem.name]['type'] = sio_elem.type,
-                    properties[sio_elem.name]['format'] = sio_elem.subtype
+                    out[response_name]['properties'][sio_elem.name] = {
+                        'type': sio_elem.type,
+                        'format': sio_elem.subtype,
+                    }
 
                 if output_required_names:
                     out[response_name]['required'] = output_required_names
