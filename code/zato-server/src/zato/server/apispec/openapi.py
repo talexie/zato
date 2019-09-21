@@ -9,6 +9,7 @@ Licensed under LGPLv3, see LICENSE.txt for terms and conditions.
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 # stdlib
+import re
 from itertools import chain
 
 # PyYAML
@@ -168,6 +169,7 @@ class OpenAPIGenerator(object):
 
                 out.paths[url_path] = {}
                 out.paths[url_path][path_operation] = {}
+                out.paths[url_path][path_operation]['summary'] = re.sub(r'\n+', '\n', item.docs.full).strip()
                 out.paths[url_path][path_operation]['parameters'] = channel_params
                 out.paths[url_path][path_operation]['responses'] = {
                     '200': {
