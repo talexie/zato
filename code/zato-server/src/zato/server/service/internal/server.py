@@ -9,6 +9,8 @@ Licensed under LGPLv3, see LICENSE.txt for terms and conditions.
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 # stdlib
+import os
+import tempfile
 from contextlib import closing
 from datetime import datetime
 from logging import getLogger
@@ -30,7 +32,16 @@ class ClusterWideSingletonKeepAlive(AdminService):
     manages the connectors and scheduler jobs, is indeed still alive.
     """
     def handle(self):
-        pass # No longer needed - superseded by ZATO_IS_SINGLETON environment variable
+        pid = os.getpid()
+        file_name = 'zato.sing.{}.txt'.format(pid)
+        temp_dir = tempfile.gettempdir()
+        full_path = os.path.join(temp_dir, file_name)
+
+        now = datetime.utcnow().isoformat()
+
+        f = open(full_path, 'w')
+        f.write(now)
+        f.close()
 
 class EnsureClusterWideSingleton(AdminService):
     """ Initializes connectors and scheduler jobs.
