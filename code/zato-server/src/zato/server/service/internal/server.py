@@ -32,16 +32,10 @@ class ClusterWideSingletonKeepAlive(AdminService):
     manages the connectors and scheduler jobs, is indeed still alive.
     """
     def handle(self):
-        pid = os.getpid()
-        file_name = 'zato.sing.{}.txt'.format(pid)
-        temp_dir = tempfile.gettempdir()
-        full_path = os.path.join(temp_dir, file_name)
-
-        now = datetime.utcnow().isoformat()
-
-        f = open(full_path, 'w')
-        f.write(now)
-        f.close()
+        if self.server.singleton_server:
+            redis_key = 'zato.singleton.alive.{}'.format(self.server.cluster_id)
+            now = datetime.utcnow().isoformat()
+            self.kvdb.conn.set(redis_key, now)
 
 class EnsureClusterWideSingleton(AdminService):
     """ Initializes connectors and scheduler jobs.

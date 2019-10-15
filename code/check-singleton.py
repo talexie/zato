@@ -27,11 +27,6 @@ class CheckSingleton(Service):
         if delta < 20:
             delta = 30
 
-        pid = os.getpid()
-        file_name = 'zato.sing.{}.txt'.format(pid)
-        temp_dir = tempfile.gettempdir()
-        full_path = os.path.join(temp_dir, file_name)
-
         now = datetime.utcnow()
 
         response = bunchify({
@@ -44,9 +39,8 @@ class CheckSingleton(Service):
         })
 
         try:
-            f = open(full_path)
-            last_updated = f.read().strip()
-            f.close()
+            redis_key = 'zato.singleton.alive.{}'.format(self.server.cluster_id)
+            last_updated = self.kvdb.conn.get(redis_key)
 
             response.last_updated = last_updated
 
