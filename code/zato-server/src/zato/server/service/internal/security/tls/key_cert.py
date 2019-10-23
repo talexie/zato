@@ -42,6 +42,7 @@ def response_hook(service, input, instance, attrs, service_type):
         service.response.payload.info = instance.info
 
 def broker_message_hook(service, input, instance, attrs, service_type):
+    input.sec_type = SEC_DEF_TYPE.TLS_KEY_CERT
     if service_type == 'delete':
         input.value = instance.value
 
