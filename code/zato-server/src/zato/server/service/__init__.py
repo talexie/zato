@@ -26,6 +26,7 @@ from lxml.objectify import ObjectifiedElement
 
 # gevent
 from gevent import Timeout, spawn
+from gevent.lock import RLock
 
 # Python 2/3 compatibility
 from past.builtins import basestring
@@ -36,7 +37,7 @@ from zato.common.py23_ import maxint
 from zato.bunch import Bunch
 from zato.common import BROKER, CHANNEL, DATA_FORMAT, Inactive, KVDB, NO_DEFAULT_VALUE, PARAMS_PRIORITY, PUBSUB, WEB_SOCKET, \
      ZatoException, zato_no_op_marker
-from zato.common.broker_message import SERVICE
+from zato.common.broker_message import CHANNEL as BROKER_MSG_CHANNEL, SERVICE
 from zato.common.exception import Reportable
 from zato.common.json_schema import ValidationException as JSONSchemaValidationException
 from zato.common.nav import DictNav, ListNav
@@ -130,6 +131,10 @@ PubSub = PubSub
 
 # ################################################################################################################################
 
+_wsgi_channels = (CHANNEL.HTTP_SOAP, CHANNEL.INVOKE, CHANNEL.INVOKE_ASYNC)
+
+# ################################################################################################################################
+
 before_job_hooks = ('before_job', 'before_one_time_job', 'before_interval_based_job', 'before_cron_style_job')
 after_job_hooks = ('after_job', 'after_one_time_job', 'after_interval_based_job', 'after_cron_style_job')
 before_handle_hooks = ('before_handle',)
@@ -159,6 +164,7 @@ class ChannelInfo(object):
     __slots__ = ('id', 'name', 'type', 'data_format', 'is_internal', 'match_target', 'impl', 'security', 'sec')
 
     def __init__(self, id, name, type, data_format, is_internal, match_target, security, impl):
+        # type: (int, str, str, str, bool, object, ChannelSecurityInfo, object)
         self.id = id
         self.name = name
         self.type = type
@@ -194,8 +200,72 @@ class ChannelSecurityInfo(object):
 
 # ################################################################################################################################
 
+class _WSXChannel(object):
+    """ Provides communication with WebSocket channels.
+    """
+    def __init__(self, server, channel_name):
+        # type: (ParallelServer, str)
+        self.server = server
+        self.channel_name = channel_name
+
+    def broadcast(self, data, _action=BROKER_MSG_CHANNEL.WEB_SOCKET_BROADCAST.value):
+        """ Sends data to all WSX clients connected to this channel.
+        """
+        # type: (str, str)
+
+        # If we are invoked, it means that self.channel_name points to an existing object
+        # so we can just let all servers know that they are to invoke their connected clients.
+        self.server.broker_client.publish({
+            'action': _action,
+            'channel_name': self.channel_name,
+            'data': data
+        })
+
+# ################################################################################################################################
+
+class _WSXChannelContainer(object):
+    """ A thin wrapper to mediate access to WebSocket channels.
+    """
+    def __init__(self, server):
+        # type: (ParallelServer)
+        self.server = server
+        self._lock = RLock()
+        self._channels = {}
+
+    def __getitem__(self, channel_name):
+        # type: (str) -> _WSXChannel
+        with self._lock:
+            if channel_name not in self._channels:
+                if self.server.worker_store.web_socket_api.connectors.get(channel_name):
+                    self._channels[channel_name] = _WSXChannel(self.server, channel_name)
+                else:
+                    raise KeyError('No such WebSocket channel `{}`'.format(channel_name))
+
+            return self._channels[channel_name]
+
+    def get(self, channel_name):
+        # type: (str) -> _WSXChannel
+        try:
+            return self[channel_name]
+        except KeyError:
+            return None # Be explicit in returning None
+
+# ################################################################################################################################
+
+class WSXFacade(object):
+    """ An object via which WebSocket channels and outgoing connections may be invoked or send broadcasts to.
+    """
+    __slots__ = 'server', 'channel', 'out'
+
+    def __init__(self, server):
+        # type: (ParallelServer)
+        self.server = server
+        self.channel = _WSXChannelContainer(self.server)
+
+# ################################################################################################################################
+
 class AMQPFacade(object):
-    """ Introduced solely to let service access outgoing connections through self.out.amqp.invoke/_async
+    """ Introduced solely to let service access outgoing connections through self.amqp.invoke/_async
     rather than self.out.amqp_invoke/_async. The .send method is kept for pre-3.0 backward-compatibility.
     """
     __slots__ = ('send', 'invoke', 'invoke_async')
@@ -236,6 +306,9 @@ class Service(object):
     email = None
     search = None
     amqp = AMQPFacade()
+
+    # For WebSockets
+    wsx = None # type: WSXFacade
 
     _worker_store = None  # type: WorkerStore
     _worker_config = None
@@ -482,7 +555,7 @@ class Service(object):
         set_response_func, # type: Callable
         service,       # type: Service
         raw_request,   # type: object
-        channel,       # type: ChannelInfo
+        channel,       # type: unicode
         data_format,   # type: unicode
         transport,     # type: unicode
         server,        # type: ParallelServer
@@ -517,7 +590,7 @@ class Service(object):
             job_type=job_type, channel_params=channel_params,
             merge_channel_params=merge_channel_params, params_priority=params_priority,
             in_reply_to=wsgi_environ.get('zato.request_ctx.in_reply_to', None), environ=kwargs.get('environ'),
-            wmq_ctx=kwargs.get('wmq_ctx'))
+            wmq_ctx=kwargs.get('wmq_ctx'), channel_info=kwargs.get('channel_info'))
 
         # It's possible the call will be completely filtered out. The uncommonly looking not self.accept shortcuts
         # if ServiceStore replaces self.accept with None in the most common case of this method's not being
@@ -529,9 +602,12 @@ class Service(object):
 
             try:
 
-                # Check rate limiting first
-                if self._has_rate_limiting:
-                    self.server.rate_limiting.check_limit(self.cid, _CHANNEL_SERVICE, self.name,
+                # Check rate limiting first - note the usage of 'service' rather than 'self',
+                # in case self is a gateway service such as an JSON-RPC one in which case
+                # we are in fact interested in checking the target service's rate limit,
+                # not our own.
+                if service._has_rate_limiting:
+                    self.server.rate_limiting.check_limit(self.cid, _CHANNEL_SERVICE, service.name,
                         self.wsgi_environ['zato.http.remote_addr'])
 
                 if service.server.component_enabled.stats:
@@ -541,7 +617,7 @@ class Service(object):
                 # Check if there is a JSON Schema validator attached to the service and if so,
                 # validate input before proceeding any further.
                 if service._json_schema_validator and service._json_schema_validator.is_initialized:
-                    validation_result = service._json_schema_validator.validate(cid, self.request.payload)
+                    validation_result = service._json_schema_validator.validate(cid, raw_request)
                     if not validation_result:
                         error = validation_result.get_error()
 
@@ -1013,12 +1089,32 @@ class Service(object):
 # ################################################################################################################################
 
     @staticmethod
-    def update(service, channel_type, server, broker_client, _ignored, cid, payload, raw_request, transport=None,
-        simple_io_config=None, data_format=None, wsgi_environ={}, job_type=None, channel_params=None, merge_channel_params=True,
-        params_priority=None, in_reply_to=None, environ=None, init=True, wmq_ctx=None,
-        _wsgi_channels=(CHANNEL.HTTP_SOAP, CHANNEL.INVOKE, CHANNEL.INVOKE_ASYNC), _AMQP=CHANNEL.AMQP, _WMQ=CHANNEL.WEBSPHERE_MQ):
-        """ Takes a service instance and updates it with the current request's
-        context data.
+    def update(
+             service,               # type: Service
+             channel_type,          # type: str
+             server, broker_client, # type: object
+             _ignored,              # type: object
+             cid,
+             payload,               # type: object
+             raw_request,           # type: object
+             transport=None,
+             simple_io_config=None, # type: object
+             data_format=None,      # type: str
+             wsgi_environ=None,     # type: dict
+             job_type=None,         # type: str
+             channel_params=None,   # type: object
+             merge_channel_params=True, # type: object
+             params_priority=None,  # type: object
+             in_reply_to=None,      # type: str
+             environ=None,          # type: object
+             init=True,             # type: bool
+             wmq_ctx=None,          # type: object
+             channel_info=None,     # type: ChannelInfo
+             _wsgi_channels=_wsgi_channels, # type: object
+             _AMQP=CHANNEL.AMQP,       # type: str
+             _WMQ=CHANNEL.WEBSPHERE_MQ # type: str
+             ):
+        """ Takes a service instance and updates it with the current request's context data.
         """
         service.server = server
         service.broker_client = broker_client # type: BrokerClient
@@ -1029,7 +1125,7 @@ class Service(object):
         service.request.simple_io_config = simple_io_config
         service.response.simple_io_config = simple_io_config
         service.data_format = data_format
-        service.wsgi_environ = wsgi_environ
+        service.wsgi_environ = wsgi_environ or {}
         service.job_type = job_type
         service.translate = server.kvdb.translate
         service.user_config = server.user_config
@@ -1052,7 +1148,7 @@ class Service(object):
         elif channel_type == _WMQ:
             service.request.wmq = service.request.ibm_mq = IBMMQRequestData(wmq_ctx)
 
-        service.channel = service.chan = ChannelInfo(
+        service.channel = service.chan = channel_info or ChannelInfo(
             channel_item.get('id'), channel_item.get('name'), channel_type,
             channel_item.get('data_format'), channel_item.get('is_internal'), channel_item.get('match_target'),
             ChannelSecurityInfo(sec_def_info.get('id'), sec_def_info.get('name'), sec_def_info.get('type'),
@@ -1127,8 +1223,15 @@ class WSXHook(_Hook):
         """ Invoked each time a response to a previous pub/sub message arrives.
         """
 
+    def on_vault_mount_point_needed(self, _zato_no_op_marker=zato_no_op_marker):
+        """ Invoked each time there is need to discover the name of a Vault mount point
+        that a particular WSX channel is secured ultimately with, i.e. the mount point
+        where the incoming user's credentials are stored in.
+        """
+
 WSXHook._hook_func_name[WEB_SOCKET.HOOK_TYPE.ON_CONNECTED] = 'on_connected'
 WSXHook._hook_func_name[WEB_SOCKET.HOOK_TYPE.ON_DISCONNECTED] = 'on_disconnected'
 WSXHook._hook_func_name[WEB_SOCKET.HOOK_TYPE.ON_PUBSUB_RESPONSE] = 'on_pubsub_response'
+WSXHook._hook_func_name[WEB_SOCKET.HOOK_TYPE.ON_VAULT_MOUNT_POINT_NEEDED] = 'on_vault_mount_point_needed'
 
 # ################################################################################################################################

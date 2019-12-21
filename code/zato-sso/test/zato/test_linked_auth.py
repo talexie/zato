@@ -37,25 +37,19 @@ class LinkedAuthTestCase(BaseTest):
             'is_active': True,
         })
 
-        response = self.get('/zato/sso/user/linked', {
+        self.get('/zato/sso/user/linked', {
             'ust': self.ctx.super_user_ust,
             'user_id': self.ctx.super_user_id
         })
 
-        print()
-        print()
-
-        print(111, response)
-
-        print()
-        print()
-
-        self.delete('/zato/sso/user/linked', {
+        response = self.delete('/zato/sso/user/linked', {
             'ust': self.ctx.super_user_ust,
             'user_id': self.ctx.super_user_id,
             'auth_type': SEC_DEF_TYPE.BASIC_AUTH,
             'auth_username': basic_auth_user_name,
         })
+
+        self.assertEqual(response.status, 'ok')
 
 # ################################################################################################################################
 # ################################################################################################################################

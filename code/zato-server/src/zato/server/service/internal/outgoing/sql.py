@@ -14,6 +14,9 @@ from operator import itemgetter
 from traceback import format_exc
 from uuid import uuid4
 
+# Python 2/3 compatibility
+from past.builtins import unicode
+
 # Zato
 from zato.common import ZatoException, ZATO_ODB_POOL_NAME
 from zato.common.broker_message import OUTGOING
@@ -33,7 +36,7 @@ class _SQLService(object):
         self.broker_client.publish(params)
 
     def validate_extra(self, cid, extra):
-        if extra and not b'=' in extra:
+        if extra and not '=' in extra:
             raise ZatoException(cid,
                 'extra should be a list of key=value parameters, possibly one-element long, instead of `{}`'.format(
                     extra.decode('utf-8')))
@@ -156,7 +159,7 @@ class Edit(AdminService, _SQLService):
                 item.db_name = input.db_name
                 item.username = input.username
                 item.pool_size = input.pool_size
-                item.extra = input.extra
+                item.extra = input.extra.encode('utf8') if isinstance(input.extra, unicode) else input.extra
 
                 session.add(item)
                 session.commit()
@@ -221,8 +224,8 @@ class Ping(AdminService):
     class SimpleIO(AdminSIO):
         request_elem = 'zato_outgoing_sql_ping_request'
         response_elem = 'zato_outgoing_sql_ping_response'
-        input_required = ('id',)
-        output_optional = ('response_time',)
+        input_required = 'id'
+        output_optional = 'id', 'response_time'
 
     def handle(self):
         with closing(self.odb.session()) as session:
@@ -232,6 +235,8 @@ class Ping(AdminService):
                     one()
 
                 ping = self.outgoing.sql.get(item.name, False).pool.ping
+
+                self.response.payload.id = self.request.input.id
                 self.response.payload.response_time = str(ping(self.server.fs_sql_config))
 
             except Exception:

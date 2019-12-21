@@ -13,6 +13,12 @@ from contextlib import closing
 from logging import getLogger
 from traceback import format_exc
 
+# gevent
+from gevent import spawn
+
+# requests
+from requests import get as requests_get
+
 # Zato
 from zato.client import AnyServiceInvoker
 from zato.common import SERVER_UP_STATUS
@@ -76,12 +82,17 @@ class _RemoteServer(_Server):
         self.up_status = up_status
         self.address = 'http{}://{}:{}'.format(
             's' if self.crypto_use_tls else '', self.preferred_address, self.port)
-
         self.invoker = AnyServiceInvoker(self.address, '/zato/internal/invoke', (api_user, self.api_password))
+        self.ping_address = '{}/zato/ping'.format(self.address)
+        self.ping_timeout = 2
 
 # ################################################################################################################################
 
     def invoke(self, service, request=None, *args, **kwargs):
+
+        # Ping the remote server to quickly find out if it is still available
+        requests_get(self.ping_address, timeout=self.ping_timeout)
+
         response = self.invoker.invoke(service, request, *args, **kwargs)
 
         if response.ok:
@@ -92,6 +103,10 @@ class _RemoteServer(_Server):
 # ################################################################################################################################
 
     def invoke_all_pids(self, service, request=None, *args, **kwargs):
+
+        # Ping the remote server to quickly find out if it is still available
+        requests_get(self.ping_address, timeout=self.ping_timeout)
+
         return self.invoker.invoke(service, request, all_pids=True, *args, **kwargs)
 
 # ################################################################################################################################
@@ -187,6 +202,7 @@ class Servers(object):
         invoke_sec_def = self._get_invoke_sec_def(session, cluster_name)
 
         for item in server_list(session, None, cluster_name, None, False):
+
             yield _RemoteServer(
                 item.cluster_id, self.cluster_name, item.name, item.preferred_address, item.bind_port,
                 item.crypto_use_tls, self.decrypt_func(invoke_sec_def.password), item.up_status)
@@ -210,14 +226,30 @@ class Servers(object):
 
 # ################################################################################################################################
 
+    def invoke_async_all(self, service, request):
+        """ Just like self.invoke, but runs in background greenlets.
+        """
+        # Look up current state of servers in ODB
+        if not self._servers:
+            self.populate_servers()
+
+        for server in self._servers.values():
+            spawn(server.invoke_all_pids, service, request)
+
+# ################################################################################################################################
+
     def invoke_all(self, service, request=None, *args, **kwargs):
         """ Invokes a service on all servers, including all of their processes, and returns combined output.
         """
         # Look up current state of servers in ODB
-        self.populate_servers()
+        if not self._servers:
+            self.populate_servers()
 
         # Server name -> Responses for all PIDs from that server
         out = {}
+
+        # If True, we will not check any responses from servers,
+        # instead all requests will be sent in their own greenlets.
 
         # Will be set to False if there is at least one error messages among all the servers and worker processes.
         out_ok = True
@@ -244,7 +276,7 @@ class Servers(object):
                     server_is_ok = True
 
                     for per_pid_response in per_pid_responses:
-                        per_pid_is_ok = per_pid_response['is_ok']
+                        per_pid_is_ok = per_pid_response.get('is_ok')
 
                         # We check all PIDs but break as soon as it is known that there was an error
                         if not per_pid_is_ok:

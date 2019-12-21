@@ -12,7 +12,9 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import logging
 import os
 from datetime import datetime, timedelta
+from json import loads
 from logging import INFO, WARN
+from platform import system as platform_system
 from re import IGNORECASE
 from tempfile import mkstemp
 from traceback import format_exc
@@ -42,7 +44,7 @@ from zato.common import DATA_FORMAT, default_internal_modules, KVDB, RATE_LIMIT,
 from zato.common.audit import audit_pii
 from zato.common.broker_message import HOT_DEPLOY, MESSAGE_TYPE, TOPICS
 from zato.common.ipc.api import IPCAPI
-from zato.common.zato_keyutils import KeyUtils
+from zato.common.odb.post_process import ODBPostProcess
 from zato.common.pubsub import SkipDelivery
 from zato.common.rate_limiting import RateLimiting
 from zato.common.util import absolutize, get_config, get_kvdb_config_for_log, get_user_config_name, hot_deploy, \
@@ -50,6 +52,7 @@ from zato.common.util import absolutize, get_config, get_kvdb_config_for_log, ge
      register_diag_handlers
 from zato.common.util.posix_ipc_ import ConnectorConfigIPC, ServerStartupIPC
 from zato.common.util.time_ import TimeUtil
+from zato.common.zato_keyutils import KeyUtils
 from zato.distlock import LockManager
 from zato.server.base.worker import WorkerStore
 from zato.server.config import ConfigStore
@@ -59,6 +62,12 @@ from zato.server.base.parallel.http import HTTPHandler
 from zato.server.base.parallel.subprocess_.ibm_mq import IBMMQIPC
 from zato.server.base.parallel.subprocess_.sftp import SFTPIPC
 from zato.server.pickup import PickupManager
+from zato.server.sso import SSOTool
+
+# ################################################################################################################################
+
+# Python 2/3 compatibility
+from past.builtins import unicode
 
 # ################################################################################################################################
 
@@ -68,14 +77,18 @@ import typing
 if typing.TYPE_CHECKING:
 
     # Zato
+    from zato.common.crypto import ServerCryptoManager
     from zato.common.odb.api import ODBManager
+    from zato.server.connection.connector.subprocess_.ipc import SubprocessIPC
     from zato.server.service.store import ServiceStore
     from zato.sso.api import SSOAPI
 
     # For pyflakes
     ODBManager = ODBManager
+    ServerCryptoManager = ServerCryptoManager
     ServiceStore = ServiceStore
     SSOAPI = SSOAPI
+    SubprocessIPC = SubprocessIPC
 
 # ################################################################################################################################
 
@@ -95,7 +108,7 @@ class ParallelServer(BrokerMessageReceiver, ConfigLoader, HTTPHandler):
     def __init__(self):
         self.host = None
         self.port = None
-        self.crypto_manager = None
+        self.crypto_manager = None # type: ServerCryptoManager
         self.odb = None # type: ODBManager
         self.odb_data = None
         self.config = None # type: ConfigStore
@@ -166,9 +179,12 @@ class ParallelServer(BrokerMessageReceiver, ConfigLoader, HTTPHandler):
         self.default_internal_pubsub_endpoint_id = None
         self.rate_limiting = None # type: RateLimiting
         self.jwt_secret = None # type: bytes
-        self._hash_secret_method = None
-        self._hash_secret_rounds = None
-        self._hash_secret_salt_size = None
+        self._hash_secret_method = None # type: unicode
+        self._hash_secret_rounds = None # type: int
+        self._hash_secret_salt_size = None # type: int
+        self.sso_tool = SSOTool(self)
+        self.platform_system = platform_system().lower() # type: unicode
+        self.has_posix_ipc = True
 
         # Our arbiter may potentially call the cleanup procedure multiple times
         # and this will be set to True the first time around.
@@ -191,6 +207,8 @@ class ParallelServer(BrokerMessageReceiver, ConfigLoader, HTTPHandler):
         self.access_logger = logging.getLogger('zato_access_log')
         self.access_logger_log = self.access_logger._log
         self.needs_access_log = self.access_logger.isEnabledFor(INFO)
+        self.needs_all_access_log = True
+        self.access_log_ignore = set()
         self.has_pubsub_audit_log = logging.getLogger('zato_pubsub_audit').isEnabledFor(INFO)
         self.is_enabled_for_warn = logging.getLogger('zato').isEnabledFor(WARN)
         self.is_admin_enabled_for_info = logging.getLogger('zato_admin').isEnabledFor(INFO)
@@ -216,7 +234,7 @@ class ParallelServer(BrokerMessageReceiver, ConfigLoader, HTTPHandler):
 
         if other_servers:
             other_server = other_servers[0] # Index 0 is as random as any other because the list is not sorted.
-            missing = self.odb.get_missing_services(other_server, locally_deployed)
+            missing = self.odb.get_missing_services(other_server, set(item.name for item in locally_deployed))
 
             if missing:
 
@@ -446,11 +464,25 @@ class ParallelServer(BrokerMessageReceiver, ConfigLoader, HTTPHandler):
 
         register_diag_handlers()
 
-        # Create all POSIX IPC objects now that we have the deployment key
-        self.shmem_size = int(float(self.fs_server_config.shmem.size) * 10**6) # Convert to megabytes as integer
 
-        self.server_startup_ipc.create(self.deployment_key, self.shmem_size)
-        self.connector_config_ipc.create(self.deployment_key, self.shmem_size)
+        # Find out if we are on a platform that can handle our posix_ipc
+        _skip_platform = self.fs_server_config.misc.get('posix_ipc_skip_platform')
+        _skip_platform = _skip_platform if isinstance(_skip_platform, list) else [_skip_platform]
+        _skip_platform = [elem for elem in _skip_platform if elem]
+        self.fs_server_config.misc.posix_ipc_skip_platform = _skip_platform
+
+        if self.platform_system in self.fs_server_config.misc.posix_ipc_skip_platform:
+            self.has_posix_ipc = False
+
+        # Create all POSIX IPC objects now that we have the deployment key,
+        # but only if our platform allows it.
+        if self.has_posix_ipc:
+            self.shmem_size = int(float(self.fs_server_config.shmem.size) * 10**6) # Convert to megabytes as integer
+            self.server_startup_ipc.create(self.deployment_key, self.shmem_size)
+            self.connector_config_ipc.create(self.deployment_key, self.shmem_size)
+        else:
+            self.server_startup_ipc = None
+            self.connector_config_ipc = None
 
         # Store the ODB configuration, create an ODB connection pool and have self.odb use it
         self.config.odb_data = self.get_config_odb_data(self)
@@ -479,6 +511,9 @@ class ParallelServer(BrokerMessageReceiver, ConfigLoader, HTTPHandler):
         self.cluster = self.odb.cluster
         self.worker_id = '{}.{}.{}.{}'.format(self.cluster_id, self.id, self.worker_pid, new_cid())
 
+        # SQL post-processing
+        ODBPostProcess(self.odb.session(), None, self.cluster_id).run()
+
         # Looked up upfront here and assigned to services in their store
         self.enforce_service_invokes = asbool(self.fs_server_config.misc.enforce_service_invokes)
 
@@ -505,12 +540,9 @@ class ParallelServer(BrokerMessageReceiver, ConfigLoader, HTTPHandler):
 
         # Normalize hot-deploy configuration
         self.hot_deploy_config = Bunch()
-
         self.hot_deploy_config.pickup_dir = absolutize(self.fs_server_config.hot_deploy.pickup_dir, self.repo_location)
-
         self.hot_deploy_config.work_dir = os.path.normpath(os.path.join(
             self.repo_location, self.fs_server_config.hot_deploy.work_dir))
-
         self.hot_deploy_config.backup_history = int(self.fs_server_config.hot_deploy.backup_history)
         self.hot_deploy_config.backup_format = self.fs_server_config.hot_deploy.backup_format
 
@@ -602,6 +634,12 @@ class ParallelServer(BrokerMessageReceiver, ConfigLoader, HTTPHandler):
         self.odb.server_up_down(
             server.token, SERVER_UP_STATUS.RUNNING, True, self.host, self.port, self.preferred_address, use_tls)
 
+        # These flags are needed if we are the first worker or not
+        has_ibm_mq = bool(self.worker_store.worker_config.definition_wmq.keys()) \
+            and self.fs_server_config.component_enabled.ibm_mq
+
+        has_sftp = bool(self.worker_store.worker_config.out_sftp.keys())
+
         if is_first:
 
             logger.info('First worker of `%s` is %s', self.name, self.pid)
@@ -619,30 +657,17 @@ class ParallelServer(BrokerMessageReceiver, ConfigLoader, HTTPHandler):
             self.invoke_startup_services(is_first)
             spawn_greenlet(self.set_up_pickup)
 
-            # Set up subprocess-based IBM MQ connections if that component is enabled
-            if self.fs_server_config.component_enabled.ibm_mq:
-
-                # Will block for a few seconds at most, until is_ok is returned
-                # which indicates that a connector started or not.
-                is_ok = self.connector_ibm_mq.start_ibm_mq_connector(int(self.fs_server_config.ibm_mq.ipc_tcp_start_port))
-
-                try:
-                    if is_ok:
-                        self.connector_ibm_mq.create_initial_wmq_definitions(self.worker_store.worker_config.definition_wmq)
-                        self.connector_ibm_mq.create_initial_wmq_outconns(self.worker_store.worker_config.out_wmq)
-                        self.connector_ibm_mq.create_initial_wmq_channels(self.worker_store.worker_config.channel_wmq)
-                except Exception as e:
-                    logger.warn('Could not create initial IBM MQ objects, e:`%s`', e)
-
-            # Set up subprocess-based SFTP connections
-            is_ok = self.connector_sftp.start_sftp_connector(int(self.fs_server_config.ibm_mq.ipc_tcp_start_port))
-            if is_ok:
-                self.connector_sftp.create_initial_sftp_outconns(self.worker_store.worker_config.out_sftp)
+            # Subprocess-based connectors
+            if self.has_posix_ipc:
+                self._init_subprocess_connectors(has_ibm_mq, has_sftp)
 
         else:
             self.startup_callable_tool.invoke(SERVER_STARTUP.PHASE.IN_PROCESS_OTHER, kwargs={
                 'parallel_server': self,
             })
+
+            if self.has_posix_ipc:
+                self._populate_connector_config(has_ibm_mq, has_sftp)
 
         # IPC
         self.ipc_api.name = self.ipc_api.get_endpoint_name(self.cluster.name, self.name, self.pid)
@@ -655,6 +680,52 @@ class ParallelServer(BrokerMessageReceiver, ConfigLoader, HTTPHandler):
         })
 
         logger.info('Started `%s@%s` (pid: %s)', server.name, server.cluster.name, self.pid)
+
+# ################################################################################################################################
+
+    def _populate_connector_config(self, has_ibm_mq, has_sftp):
+        """ Called when we are not the first worker so, any connector is enabled,
+        we need to get its configuration through IPC and populate our own accordingly.
+        """
+        ipc_config_name_to_enabled = {
+            IBMMQIPC.ipc_config_name: has_ibm_mq,
+            SFTPIPC.ipc_config_name: has_sftp
+        }
+
+        for ipc_config_name, is_enabled in ipc_config_name_to_enabled.items():
+            if is_enabled:
+                response = self.connector_config_ipc.get_config(ipc_config_name)
+                if response:
+                    response = loads(response)
+                    connector_suffix = ipc_config_name.replace('zato-', '').replace('-', '_')
+                    connector_attr = 'connector_{}'.format(connector_suffix)
+                    connector = getattr(self, connector_attr) # type: SubprocessIPC
+                    connector.ipc_tcp_port = response['port']
+
+# ################################################################################################################################
+
+    def _init_subprocess_connectors(self, has_ibm_mq, has_sftp):
+        """ Sets up subprocess-based connectors.
+        """
+        # Common
+        ipc_tcp_start_port = int(self.fs_server_config.misc.get('ipc_tcp_start_port', 34567))
+
+        # IBM MQ
+        if has_ibm_mq:
+
+            # Will block for a few seconds at most, until is_ok is returned
+            # which indicates that a connector started or not.
+            try:
+                if self.connector_ibm_mq.start_ibm_mq_connector(ipc_tcp_start_port):
+                    self.connector_ibm_mq.create_initial_wmq_definitions(self.worker_store.worker_config.definition_wmq)
+                    self.connector_ibm_mq.create_initial_wmq_outconns(self.worker_store.worker_config.out_wmq)
+                    self.connector_ibm_mq.create_initial_wmq_channels(self.worker_store.worker_config.channel_wmq)
+            except Exception as e:
+                logger.warn('Could not create initial IBM MQ objects, e:`%s`', e)
+
+        # SFTP
+        if has_sftp and self.connector_sftp.start_sftp_connector(ipc_tcp_start_port):
+            self.connector_sftp.create_initial_sftp_outconns(self.worker_store.worker_config.out_sftp)
 
 # ################################################################################################################################
 
@@ -906,7 +977,7 @@ class ParallelServer(BrokerMessageReceiver, ConfigLoader, HTTPHandler):
     def encrypt(self, data, _prefix=SECRETS.PREFIX):
         """ Returns data encrypted using server's CryptoManager.
         """
-        data = data.encode('utf8')
+        data = data.encode('utf8') if isinstance(data, unicode) else data
         encrypted = self.crypto_manager.encrypt(data)
         encrypted = encrypted.decode('utf8')
         return '{}{}'.format(_prefix, encrypted)
@@ -923,10 +994,13 @@ class ParallelServer(BrokerMessageReceiver, ConfigLoader, HTTPHandler):
 
 # ################################################################################################################################
 
-    def decrypt(self, encrypted, _prefix=SECRETS.PREFIX):
+    def decrypt(self, data, _prefix=SECRETS.PREFIX):
         """ Returns data decrypted using server's CryptoManager.
         """
-        return self.crypto_manager.decrypt(encrypted.replace(_prefix, '', 1))
+        if data.startswith(_prefix):
+            return self.crypto_manager.decrypt(data.replace(_prefix, '', 1))
+        else:
+            return data # Already decrypted, return as is
 
 # ################################################################################################################################
 
@@ -1011,8 +1085,9 @@ class ParallelServer(BrokerMessageReceiver, ConfigLoader, HTTPHandler):
             self.sql_pool_store.cleanup_on_stop()
 
             # Close all POSIX IPC structures
-            self.server_startup_ipc.close()
-            self.connector_config_ipc.close()
+            if self.has_posix_ipc:
+                self.server_startup_ipc.close()
+                self.connector_config_ipc.close()
 
             # Close ZeroMQ-based IPC
             self.ipc_api.close()

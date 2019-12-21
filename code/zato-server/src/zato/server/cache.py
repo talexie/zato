@@ -19,6 +19,9 @@ import gevent
 # Zato
 from zato.common.odb.model import KVData
 
+# Python 2/3 compatibility
+from past.builtins import unicode
+
 # ################################################################################################################################
 
 logger = getLogger(__name__)
@@ -58,6 +61,12 @@ class RobustCache(object):
     def _odb_put(self, key, value, ttl):
         key = self._get_odb_key(key)
 
+        if isinstance(key, unicode):
+            key = key.encode('utf8')
+
+        if isinstance(value, unicode):
+            value = value.encode('utf8')
+
         with closing(self.odb.session()) as session:
             try:
                 item = session.query(KVData).filter_by(key=key).first()
@@ -76,7 +85,7 @@ class RobustCache(object):
                 session.commit()
 
             except Exception:
-                logger.exception('Unable to put key %s into ODB', key)
+                logger.exception('Unable to put key/value `%r` `%r` (%s %s) into ODB', key, value, type(key), type(value))
                 session.rollback()
 
                 raise
@@ -89,10 +98,10 @@ class RobustCache(object):
 
 # ################################################################################################################################
 
-    def put(self, key, value, ttl=None, async=True):
+    def put(self, key, value, ttl=None, is_async=True):
         """Put key/value into both KVDB and ODB, in parallel.
 
-        if async is False, we join the greenlets until they are done.
+        if is_async is False, we join the greenlets until they are done.
         otherwise, we do not wait for them to finish.
         """
         greenlets = [
@@ -100,7 +109,7 @@ class RobustCache(object):
             gevent.spawn(self._odb_put, key, value, ttl)
         ]
 
-        if not async:
+        if not is_async:
             gevent.joinall(greenlets)
 
 # ################################################################################################################################

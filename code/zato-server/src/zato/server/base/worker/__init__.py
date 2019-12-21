@@ -46,7 +46,7 @@ from six import PY3
 from zato.broker import BrokerMessageReceiver
 from zato.bunch import Bunch
 from zato.common import broker_message, CHANNEL, GENERIC as COMMON_GENERIC, HTTP_SOAP_SERIALIZATION_TYPE, IPC, KVDB, NOTIF, \
-     PUBSUB, RATE_LIMIT, SEC_DEF_TYPE, simple_types, URL_TYPE, TRACE1, ZATO_NONE, ZATO_ODB_POOL_NAME, ZMQ
+     PUBSUB, RATE_LIMIT, SEC_DEF_TYPE, SECRETS, simple_types, URL_TYPE, TRACE1, ZATO_NONE, ZATO_ODB_POOL_NAME, ZMQ
 from zato.common.broker_message import code_to_name, GENERIC as BROKER_MSG_GENERIC, SERVICE
 from zato.common.dispatch import dispatcher
 from zato.common.match import Matcher
@@ -84,6 +84,7 @@ from zato.server.generic.api.outconn_ldap import OutconnLDAPWrapper
 from zato.server.generic.api.outconn_mongodb import OutconnMongoDBWrapper
 from zato.server.generic.api.outconn_wsx import OutconnWSXWrapper
 from zato.server.pubsub import PubSub
+from zato.server.pubsub.task import PubSubTool
 from zato.server.query import CassandraQueryAPI, CassandraQueryStore
 from zato.server.rbac_ import RBAC
 from zato.server.stats import MaintenanceTool
@@ -447,8 +448,9 @@ class WorkerStore(_WorkerStoreBase, BrokerMessageReceiver):
 
             if sec_config['sec_type'] == SEC_DEF_TYPE.TLS_KEY_CERT:
                 tls = self.request_dispatcher.url_data.tls_key_cert_get(security_name)
+                auth_data = self.server.decrypt(tls.config.auth_data)
                 sec_config['tls_key_cert_full_path'] = get_tls_key_cert_full_path(
-                    self.server.tls_dir, get_tls_from_payload(tls.config.value, True))
+                    self.server.tls_dir, get_tls_from_payload(auth_data, True))
 
         wrapper_config = {'id':config.id,
             'is_active':config.is_active, 'method':config.method,
@@ -859,19 +861,37 @@ class WorkerStore(_WorkerStoreBase, BrokerMessageReceiver):
 
 # ################################################################################################################################
 
-    def init_pubsub(self):
+    def init_pubsub(self, _srv=PUBSUB.ENDPOINT_TYPE.SERVICE.id):
         """ Sets up all pub/sub endpoints, subscriptions and topics. Also, configures pubsub with getters for each endpoint type.
         """
+
+        # This is a pub/sub tool for delivery of Zato services within this server
+        service_pubsub_tool = PubSubTool(self.pubsub, self.server, _srv, True)
+        self.pubsub.service_pubsub_tool = service_pubsub_tool
+
         for value in self.worker_config.pubsub_endpoint.values():
             self.pubsub.create_endpoint(bunchify(value['config']))
 
         for value in self.worker_config.pubsub_subscription.values():
+
             config = bunchify(value['config'])
             config.add_subscription = True # We don't create WSX subscriptions here so it is always True
-            self.pubsub._subscribe(config)
+
+            self.pubsub.create_subscription_object(config)
+
+            # Special-case delivery of messages to services
+            if config.sub_key.startswith('zpsk.srv'):
+                service_pubsub_tool.add_sub_key(config['sub_key'])
+                self.pubsub.set_sub_key_server({
+                    'sub_key': config.sub_key,
+                    'cluster_id': self.server.cluster_id,
+                    'server_name': self.server.name,
+                    'server_pid': self.server.pid,
+                    'endpoint_type': _srv
+                })
 
         for value in self.worker_config.pubsub_topic.values():
-            self.pubsub.create_topic(bunchify(value['config']))
+            self.pubsub.create_topic_object(bunchify(value['config']))
 
         self.pubsub.endpoint_impl_getter[PUBSUB.ENDPOINT_TYPE.AMQP.id] = None # Not used for now
         self.pubsub.endpoint_impl_getter[PUBSUB.ENDPOINT_TYPE.REST.id] = self.worker_config.out_plain_http.get_by_id
@@ -1209,10 +1229,12 @@ class WorkerStore(_WorkerStoreBase, BrokerMessageReceiver):
 # ################################################################################################################################
 
     def on_broker_msg_VAULT_CONNECTION_CREATE(self, msg):
+        msg.token = self.server.decrypt(msg.token)
         self.vault_conn_api.create(msg)
         dispatcher.notify(broker_message.VAULT.CONNECTION_CREATE.value, msg)
 
     def on_broker_msg_VAULT_CONNECTION_EDIT(self, msg):
+        msg.token = self.server.decrypt(msg.token)
         self.vault_conn_api.edit(msg)
         self._update_auth(msg, code_to_name[msg.action], SEC_DEF_TYPE.VAULT,
                 self._visit_wrapper_edit, keys=('username', 'name'))
@@ -1571,6 +1593,14 @@ class WorkerStore(_WorkerStoreBase, BrokerMessageReceiver):
 # ################################################################################################################################
 
     def on_broker_msg_SCHEDULER_JOB_EXECUTED(self, msg, args=None):
+
+        # If statistics are disabled, all their related services will not be available
+        # so if they are invoked via scheduler, they should be ignored. Ultimately,
+        # the scheduler should not invoke them at all.
+        if msg.name.startswith('zato.stats'):
+            if not self.server.component_enabled.stats:
+                return
+
         return self.on_message_invoke_service(msg, CHANNEL.SCHEDULER, 'SCHEDULER_JOB_EXECUTED', args)
 
     def on_broker_msg_CHANNEL_ZMQ_MESSAGE_RECEIVED(self, msg, args=None):
@@ -1582,6 +1612,9 @@ class WorkerStore(_WorkerStoreBase, BrokerMessageReceiver):
         """ Creates or updates an SQL connection, including changing its
         password.
         """
+        if msg.password.startswith(SECRETS.PREFIX):
+            msg.password = self.server.decrypt(msg.password)
+
         # Is it a rename? If so, delete the connection first
         if msg.get('old_name') and msg.get('old_name') != msg['name']:
             del self.sql_pool_store[msg['old_name']]
@@ -1947,6 +1980,8 @@ class WorkerStore(_WorkerStoreBase, BrokerMessageReceiver):
     def on_broker_msg_CLOUD_AWS_S3_CREATE_EDIT(self, msg, *args):
         """ Creates or updates an AWS S3 connection.
         """
+        msg.password = self.server.decrypt(msg.password)
+
         self._update_aws_config(msg)
         self._on_broker_msg_cloud_create_edit(msg, 'AWS S3', self.worker_config.cloud_aws_s3, S3Wrapper)
 

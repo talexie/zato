@@ -49,7 +49,8 @@ from zato.common.odb.model.base import Base as ModelBase
 from zato.common.util import deployment_info, import_module_from_path, is_func_overridden, is_python_file, visit_py_source
 from zato.common.util.json_ import dumps
 from zato.server.config import ConfigDict
-from zato.server.service import after_handle_hooks, after_job_hooks, before_handle_hooks, before_job_hooks, PubSubHook, Service
+from zato.server.service import after_handle_hooks, after_job_hooks, before_handle_hooks, before_job_hooks, PubSubHook, Service, \
+     WSXFacade
 from zato.server.service.internal import AdminService
 
 # ################################################################################################################################
@@ -213,6 +214,7 @@ class ServiceStore(object):
         self.deployment_info = {}  # impl_name to deployment information
         self.update_lock = RLock()
         self.patterns_matcher = Matcher()
+        self.needs_post_deploy_attr = 'needs_post_deploy'
 
 # ################################################################################################################################
 
@@ -242,11 +244,26 @@ class ServiceStore(object):
 
 # ################################################################################################################################
 
+    def post_deploy(self, class_):
+        self.set_up_class_json_schema(class_)
+
+# ################################################################################################################################
+
     def set_up_class_json_schema(self, class_, service_config=None):
         # type: (Service, dict)
 
         class_name = class_.get_name()
-        service_config = service_config or self.server.config.service[class_name]['config']
+
+        # We are required to configure JSON Schema for this service
+        # but first we need to check if the service is already deployed.
+        # If it is not, we need to set a flag indicating that our caller
+        # should do it later, once the service has been actually deployed.
+        service_info = self.server.config.service.get(class_name)
+        if not service_info:
+            setattr(class_, self.needs_post_deploy_attr, True)
+            return
+
+        service_config = service_config or service_info['config']
         json_schema_config = get_service_config(service_config, self.server)
 
         # Make sure the schema points to an absolute path and that it exists
@@ -325,6 +342,7 @@ class ServiceStore(object):
             class_.amqp.invoke = service_store.server.worker_store.amqp_invoke # .send is for pre-3.0 backward compat
             class_.amqp.invoke_async = class_.amqp.send = service_store.server.worker_store.amqp_invoke_async
 
+            class_.wsx = WSXFacade(service_store.server)
             class_.definition.kafka = service_store.server.worker_store.def_kafka
             class_.im.slack = service_store.server.worker_store.outconn_im_slack
             class_.im.telegram = service_store.server.worker_store.outconn_im_telegram
@@ -386,6 +404,19 @@ class ServiceStore(object):
 
         class_._has_before_job_hooks = bool(class_._before_job_hooks)
         class_._has_after_job_hooks = bool(class_._after_job_hooks)
+
+# ################################################################################################################################
+
+    def has_sio(self, service_name):
+        """ Returns True if service indicated by service_name has a SimpleIO definition.
+        """
+        # type: (str) -> bool
+
+        with self.update_lock:
+            service_id = self.get_service_id_by_name(service_name)
+            service_info = self.get_service_info_by_id(service_id) # type: Service
+            class_ = service_info['service_class'] # type: Service
+            return getattr(class_, 'has_sio', False)
 
 # ################################################################################################################################
 
@@ -661,6 +692,21 @@ class ServiceStore(object):
 
 # ################################################################################################################################
 
+    def _should_delete_deployed_service(self, service, already_deployed):
+        """ Returns True if a given service has been already deployed but its current source code,
+        one that is about to be deployed, is changed in comparison to what is stored in ODB.
+        """
+        # type: (InRAMService, dict)
+
+        # Already deployed ..
+        if service.name in already_deployed:
+
+            # .. thus, return True if current source code is different to what we have already
+            if service.source_code_info.source != already_deployed[service.name]:
+                return True
+
+# ################################################################################################################################
+
     def _store_deployed_services_in_odb(self, session, batch_indexes, to_process, _utcnow=datetime.utcnow):
         """ Looks up all Service objects in ODB, checks if any is not deployed locally and deploys it if it is not.
         """
@@ -674,7 +720,7 @@ class ServiceStore(object):
         services = self.get_basic_data_services(session)
 
         # Same goes for deployed services objects (DeployedService)
-        deployed_services = self.get_basic_data_deployed_services()
+        already_deployed = self.get_basic_data_deployed_services()
 
         # Modules visited may return a service that has been already visited via another module,
         # in which case we need to skip such a duplicate service.
@@ -683,15 +729,28 @@ class ServiceStore(object):
         # Add any missing DeployedService objects from each batch delineated by indexes found
         for start_idx, end_idx in batch_indexes:
 
+            # Deployed services that need to be deleted before they can be re-added,
+            # which will happen if a service's name does not change but its source code does
+            to_delete = []
+
+            # DeployedService objects to be added
             to_add = []
+
+            # InRAMService objects to process in this iteration
             batch_services = to_process[start_idx:end_idx]
 
             for service in batch_services: # type: InRAMService
 
+                # Ignore service we have already processed
                 if service.name in already_visited:
                     continue
                 else:
                     already_visited.add(service.name)
+
+                # Make sure to re-deploy services that have changed their source code
+                if self._should_delete_deployed_service(service, already_deployed):
+                    to_delete.append(self.get_service_id_by_name(service.name))
+                    del already_deployed[service.name]
 
                 # At this point we wil always have IDs for all Service objects
                 service_id = services[service.name]['id']
@@ -704,7 +763,7 @@ class ServiceStore(object):
                 deployment_details = dumps(deployment_info_dict)
 
                 # No such Service object in ODB so we need to store it
-                if service.name not in deployed_services:
+                if service.name not in already_deployed:
                     to_add.append({
                         'server_id': self.server.id,
                         'service_id': service_id,
@@ -715,6 +774,10 @@ class ServiceStore(object):
                         'source_hash': service.source_code_info.hash,
                         'source_hash_method': service.source_code_info.hash_method,
                     })
+
+            # If any services are to be redeployed, delete them first now
+            if to_delete:
+                self.odb.drop_deployed_services_by_name(session, to_delete)
 
             # If any services are to be deployed, do it now.
             if to_add:
@@ -759,12 +822,12 @@ class ServiceStore(object):
 # ################################################################################################################################
 
     def get_basic_data_deployed_services(self):
-        # type: (None) -> set
+        # type: (None) -> dict
 
         # This is a list of services to turn into a set
         deployed_service_list = self.odb.get_basic_data_deployed_service_list()
 
-        return set(elem[0] for elem in deployed_service_list)
+        return dict((elem[0], elem[1]) for elem in deployed_service_list)
 
 # ################################################################################################################################
 

@@ -28,7 +28,7 @@ import sqlalchemy
 
 # Zato
 from zato.cli import util as cli_util
-from zato.common import get_version, odb, util, ZATO_INFO_FILE
+from zato.common import get_version, MS_SQL, odb, util, ZATO_INFO_FILE
 from zato.common.util import get_engine_url, get_full_stack, get_session
 from zato.common.util.cli import read_stdin_data
 from zato.common.util.import_ import import_string
@@ -314,6 +314,10 @@ ping_query=SELECT 1
 display_name=Oracle
 ping_query=SELECT 1 FROM dual
 
+[{}]
+display_name="MS SQL (Direct)"
+ping_query=SELECT 1
+
 # ######### ################################# ######### #
 # ######### User-defined SQL engines go below ######### #
 # ######### ################################# ######### #
@@ -321,7 +325,7 @@ ping_query=SELECT 1 FROM dual
 #[label]
 #friendly_name=My DB
 #sqlalchemy_driver=sa-name
-""".lstrip() # nopep8
+""".lstrip().format(MS_SQL.ZATO_DIRECT) # nopep8
 
 # ################################################################################################################################
 
@@ -356,13 +360,14 @@ def run_command(args):
         ('reset_totp_key', 'zato.cli.web_admin_auth.ResetTOTPKey'),
         ('quickstart_create', 'zato.cli.quickstart.Create'),
         ('service_invoke', 'zato.cli.service.Invoke'),
-        ('update_crypto', 'zato.cli.crypto.UpdateCrypto'),
         ('set_admin_invoke_password', 'zato.cli.web_admin_auth.SetAdminInvokePassword'),
         ('sso_change_user_password', 'zato.cli.sso.ChangeUserPassword'),
         ('sso_create_odb', 'zato.cli.sso.CreateODB'),
         ('sso_create_user', 'zato.cli.sso.CreateUser'),
         ('sso_create_super_user', 'zato.cli.sso.CreateSuperUser'),
         ('sso_delete_user', 'zato.cli.sso.DeleteUser'),
+        ('sso_login', 'zato.cli.sso.Login'),
+        ('sso_logout', 'zato.cli.sso.Logout'),
         ('sso_lock_user', 'zato.cli.sso.LockUser'),
         ('sso_reset_totp_key', 'zato.cli.sso.ResetTOTPKey'),
         ('sso_reset_user_password', 'zato.cli.sso.ResetUserPassword'),
@@ -937,10 +942,16 @@ class ManageCommand(ZatoCommand):
 
 # ################################################################################################################################
 
-def is_arg_given(args, arg_name):
-    try:
-        return args.get(arg_name)
-    except AttributeError:
-        return getattr(args, arg_name, None)
+def is_arg_given(args, *arg_names):
+
+    for arg_name in arg_names:
+        try:
+            result = args.get(arg_name)
+            if result:
+                return True
+        except AttributeError:
+            result = getattr(args, arg_name, None)
+            if result:
+                return True
 
 # ################################################################################################################################

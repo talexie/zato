@@ -72,6 +72,7 @@ class SubprocessIPC(object):
     def __init__(self, server):
         # type: (ParallelServer)
         self.server = server
+        self.ipc_tcp_port = None
 
 # ################################################################################################################################
 
@@ -128,7 +129,7 @@ class SubprocessIPC(object):
 
         # Wait up to timeout seconds for the connector to start as indicated by its responding to a PING request
         now = datetime.utcnow()
-        warn_after = now + timedelta(seconds=3)
+        warn_after = now + timedelta(seconds=60)
         should_warn = False
         until = now + timedelta(seconds=timeout)
         is_ok = False
